@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Server, Shield, Cpu, ArrowRight, CheckCircle2, Loader2, Package } from 'lucide-react';
+import { Server, Shield, Cpu, ArrowRight, CheckCircle2, Loader2, Package, Globe, Lock, Play } from 'lucide-react';
 import './Onboarding.css';
 
 interface OnboardingProps {
-  onComplete: () => void;
+  onComplete: (view?: string) => void;
 }
 
 interface RuntimeStatus {
@@ -24,6 +24,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const [checkingDeps, setCheckingDeps] = useState(true);
   const [depsInstalled, setDepsInstalled] = useState(false);
   const [sysStats, setSysStats] = useState<SystemStats | null>(null);
+  const [isDeploying, setIsDeploying] = useState(false);
 
   useEffect(() => {
     if (step === 1) {
@@ -131,9 +132,113 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         </div>
       </div>
 
-      <button className="btn-primary onboarding-btn mt-6" onClick={onComplete}>
-        Open Dashboard <ArrowRight size={18} />
+      <button className="btn-primary onboarding-btn mt-6" onClick={() => setStep(3)}>
+        Next: Exposure & Networking <ArrowRight size={18} />
       </button>
+    </div>
+  );
+
+  const renderExposureEdu = () => (
+    <div className="onboarding-step animate-fade-in">
+      <div className="onboarding-icon-large">
+        <Globe size={48} />
+      </div>
+      <h2>Who can see your apps?</h2>
+      <p className="text-secondary onboarding-desc">
+        SelfHOSTed defaults to extreme privacy. By default, everything you host is <strong>Local Only</strong>.
+      </p>
+      
+      <div className="glass-card text-left mt-4" style={{width: '100%'}}>
+        <div style={{ marginBottom: '16px' }}>
+          <strong style={{ color: 'var(--success-color)' }}>1. Local Only (Default)</strong>
+          <p className="text-secondary text-sm">Visible only to devices connected to your home Wi-Fi network. Completely isolated from the internet.</p>
+        </div>
+        <div style={{ marginBottom: '16px' }}>
+          <strong style={{ color: 'var(--primary-color)' }}>2. Tailscale Mesh</strong>
+          <p className="text-secondary text-sm">Visible anywhere in the world, but <strong>only</strong> to devices you explicitly approve on your Tailnet. Think of it as a private, encrypted global Wi-Fi.</p>
+        </div>
+        <div>
+          <strong style={{ color: 'var(--warning-color)' }}>3. Cloudflare Public</strong>
+          <p className="text-secondary text-sm">Visible to anyone on the public internet, protected by Cloudflare's enterprise-grade DDoS mitigation.</p>
+        </div>
+      </div>
+
+      <button className="btn-primary onboarding-btn mt-6" onClick={() => setStep(4)}>
+        Next: Security <ArrowRight size={18} />
+      </button>
+    </div>
+  );
+
+  const renderVaultEdu = () => (
+    <div className="onboarding-step animate-fade-in">
+      <div className="onboarding-icon-large">
+        <Lock size={48} />
+      </div>
+      <h2>The Secure Vault</h2>
+      <p className="text-secondary onboarding-desc">
+        No more manually copying and pasting database passwords into <code>.env</code> files.
+      </p>
+      
+      <div className="glass-card text-left mt-4" style={{width: '100%', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)'}}>
+        <p className="text-secondary" style={{ lineHeight: '1.6' }}>
+          When you launch an application, SelfHOSTed automatically <strong>generates, encrypts, and seamlessly injects</strong> secure passwords directly into the workloads behind the scenes.
+        </p>
+        <p className="text-secondary mt-3" style={{ lineHeight: '1.6' }}>
+          Your secrets are kept perfectly safe out of plaintext.
+        </p>
+      </div>
+
+      <button className="btn-primary onboarding-btn mt-6" onClick={() => setStep(5)}>
+        Final Step <ArrowRight size={18} />
+      </button>
+    </div>
+  );
+
+  const deployHelloWorld = async () => {
+    setIsDeploying(true);
+    try {
+      await invoke('deploy_stack', {
+        templateId: "hello-world",
+        domain: null,
+        exposure: null
+      });
+      // Redirect straight to WebsiteHosting to see the newly launched site
+      onComplete('website');
+    } catch (e) {
+      console.error(e);
+      alert("Failed to launch hello world template: " + e);
+      setIsDeploying(false);
+    }
+  };
+
+  const renderInstantDeploy = () => (
+    <div className="onboarding-step animate-fade-in">
+      <div className="onboarding-icon-large">
+        <Play size={48} />
+      </div>
+      <h2>You're Ready.</h2>
+      <p className="text-secondary onboarding-desc">
+        Experience the orchestration engine instantly. Launch a lightning-fast demonstration website in 1 click.
+      </p>
+      
+      <div style={{ display: 'flex', gap: '16px', marginTop: '32px', width: '100%' }}>
+        <button 
+          className="btn-secondary" 
+          style={{ flex: 1, justifyContent: 'center' }} 
+          onClick={() => onComplete('dashboard')}
+          disabled={isDeploying}
+        >
+          Skip to Dashboard
+        </button>
+        <button 
+          className="btn-primary" 
+          style={{ flex: 2, justifyContent: 'center', background: 'var(--success-color)' }} 
+          onClick={deployHelloWorld}
+          disabled={isDeploying}
+        >
+          {isDeploying ? <><Loader2 size={18} className="spinner" /> Provisioning...</> : 'Deploy "Hello World"'}
+        </button>
+      </div>
     </div>
   );
 
@@ -143,11 +248,17 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         {step === 0 && renderWelcome()}
         {step === 1 && renderDependencies()}
         {step === 2 && renderHardware()}
+        {step === 3 && renderExposureEdu()}
+        {step === 4 && renderVaultEdu()}
+        {step === 5 && renderInstantDeploy()}
         
         <div className="step-indicators">
           <div className={`step-dot ${step >= 0 ? 'active' : ''}`}></div>
           <div className={`step-dot ${step >= 1 ? 'active' : ''}`}></div>
           <div className={`step-dot ${step >= 2 ? 'active' : ''}`}></div>
+          <div className={`step-dot ${step >= 3 ? 'active' : ''}`}></div>
+          <div className={`step-dot ${step >= 4 ? 'active' : ''}`}></div>
+          <div className={`step-dot ${step >= 5 ? 'active' : ''}`}></div>
         </div>
       </div>
     </div>

@@ -79,6 +79,34 @@ impl TemplateEngine {
             templates.insert(wp.id.clone(), wp);
         }
 
+        let hello_world_json = r#"{
+            "id": "hello-world",
+            "name": "Hello World",
+            "description": "A lightning fast, static demonstration website.",
+            "icon": "globe",
+            "category": "Demo",
+            "recommended_ram_gb": 0,
+            "workloads": [
+                {
+                    "id": "web",
+                    "resource_type": "website",
+                    "template": "static",
+                    "port": 80,
+                    "env_vars": {},
+                    "domain": null,
+                    "host_path": null,
+                    "exposure": null,
+                    "stack_id": null,
+                    "network_alias": "web",
+                    "depends_on": []
+                }
+            ]
+        }"#;
+
+        if let Ok(hw) = serde_json::from_str::<AppTemplate>(hello_world_json) {
+            templates.insert(hw.id.clone(), hw);
+        }
+
         Self { templates }
     }
 

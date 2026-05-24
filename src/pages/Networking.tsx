@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Shield, Globe, Lock, Activity, Link2, CheckCircle } from 'lucide-react';
 import { GlassCard } from '../components/GlassCard';
+import { EducationalTooltip } from '../components/EducationalTooltip';
 
 export const Networking: React.FC = () => {
   const [cloudflareToken, setCloudflareToken] = useState('');
@@ -40,7 +41,13 @@ export const Networking: React.FC = () => {
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
               <div style={{ flex: 1 }}>
-                <span style={{ display: 'block', fontWeight: 'bold' }}>Quick Tunnels (Free)</span>
+                <span style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold' }}>
+                  Quick Tunnels (Free)
+                  <EducationalTooltip 
+                    title="Ephemeral Tunnels" 
+                    content="Quick Tunnels create temporary, random URLs ending in trycloudflare.com. They are perfect for testing but the URL changes every time the tunnel restarts."
+                  />
+                </span>
                 <span className="text-secondary" style={{ fontSize: '0.8rem' }}>Temporary <code>trycloudflare.com</code> URLs. No account required.</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--success-color)', fontSize: '0.9rem' }}>

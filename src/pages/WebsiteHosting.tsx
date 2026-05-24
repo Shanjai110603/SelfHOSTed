@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Globe, Settings, Terminal, Play, Folder, Box } from 'lucide-react';
 import { GlassCard } from '../components/GlassCard';
+import { EducationalTooltip } from '../components/EducationalTooltip';
 
 export const WebsiteHosting: React.FC = () => {
   const [template, setTemplate] = useState('static');
@@ -129,6 +130,13 @@ export const WebsiteHosting: React.FC = () => {
               <p className="text-secondary" style={{ marginBottom: '16px' }}>
                 Bind a domain (like <code>myapp.local</code>) directly to this workload. Traefik will automatically handle the routing.
               </p>
+              <label style={{ display: 'flex', alignItems: 'center', marginBottom: '8px', color: 'var(--text-secondary)' }}>
+                Custom Domain (Optional)
+                <EducationalTooltip 
+                  title="Proxy Routing" 
+                  content="If you provide a custom domain (e.g., app.selfhosted.local), the internal Traefik Proxy will automatically intercept traffic for that domain and route it securely to your container, without exposing ports directly to your host OS."
+                />
+              </label>
               <input 
                 type="text" 
                 value={domain} 
@@ -137,7 +145,19 @@ export const WebsiteHosting: React.FC = () => {
                 style={{ width: '100%', padding: '12px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', borderRadius: '8px', marginBottom: '24px' }}
               />
 
-              <h3 style={{ color: 'var(--text-primary)', marginBottom: '8px' }}>Global Network Exposure</h3>
+              <label style={{ display: 'flex', alignItems: 'center', marginBottom: '8px', color: 'var(--text-primary)', fontWeight: 'bold' }}>
+                Global Network Exposure
+                <EducationalTooltip 
+                  title="Adaptive Networking" 
+                  content={
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <p><strong>Local Only:</strong> Visible only on your home network.</p>
+                      <p><strong>Cloudflare:</strong> Publicly exposed to the entire internet.</p>
+                      <p><strong>Tailscale:</strong> Privately exposed over a secure global mesh network.</p>
+                    </div>
+                  }
+                />
+              </label>
               <p className="text-secondary" style={{ marginBottom: '16px', fontSize: '0.9rem' }}>
                 Orchestrate public or mesh routing directly to this workload. 
                 <strong style={{ color: '#f59e0b', marginLeft: '4px' }}>Secure by Default: Local Only.</strong>
