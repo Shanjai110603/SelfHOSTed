@@ -8,6 +8,7 @@ export const WebsiteHosting: React.FC = () => {
   const [template, setTemplate] = useState('static');
   const [hostPath, setHostPath] = useState('');
   const [port, setPort] = useState(8080);
+  const [requireAuth, setRequireAuth] = useState(false);
   
   // Advanced State
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -34,6 +35,7 @@ export const WebsiteHosting: React.FC = () => {
           resource_type: 'website',
           template,
           port,
+          require_auth: requireAuth,
           env_vars: envVars,
           domain: domain.length > 0 ? domain : null,
           host_path: hostPath,
@@ -108,6 +110,23 @@ export const WebsiteHosting: React.FC = () => {
               <p className="text-secondary" style={{ fontSize: '0.8rem', marginTop: '6px' }}>
                 The internal port your app listens on (e.g., 3000 for Node). The proxy will route to this.
               </p>
+              
+              <label style={{ display: 'flex', alignItems: 'center', marginBottom: '8px', marginTop: '16px', color: 'var(--text-primary)', fontWeight: 'bold' }}>
+                Require Authentication (Zero Trust)
+                <EducationalTooltip 
+                  title="Zero Trust Protection" 
+                  content="When enabled, the Traefik proxy will block all traffic to this workload and require a username (admin) and password to access the site. Perfect for legacy apps without their own login screens."
+                />
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '8px' }}>
+                <input 
+                  type="checkbox" 
+                  checked={requireAuth} 
+                  onChange={(e) => setRequireAuth(e.target.checked)} 
+                  style={{ width: '20px', height: '20px', accentColor: 'var(--primary-color)' }}
+                />
+                <span className="text-secondary" style={{ fontSize: '0.9rem' }}>Enforce HTTP Basic Authentication before loading the site.</span>
+              </div>
             </div>
           </div>
         </GlassCard>

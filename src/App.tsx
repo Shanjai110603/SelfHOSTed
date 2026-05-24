@@ -10,6 +10,7 @@ import { Networking } from './pages/Networking';
 import { FileSharing } from './pages/FileSharing';
 import { Marketplace } from './pages/Marketplace';
 import { DevDashboard } from './pages/DevDashboard';
+import { LockScreen } from './pages/LockScreen';
 import { TelemetryWidget } from './components/TelemetryWidget';
 import { OrchestrationToast } from './components/OrchestrationToast';
 import './App.css';
@@ -22,6 +23,7 @@ interface SystemStats {
 
 function App() {
   const [onboardingComplete, setOnboardingComplete] = useState(false);
+  const [isUnlocked, setIsUnlocked] = useState(false);
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [currentView, setCurrentView] = useState('dashboard');
 
@@ -30,7 +32,14 @@ function App() {
   }, [onboardingComplete]);
 
   if (!onboardingComplete) {
-    return <Onboarding onComplete={() => setOnboardingComplete(true)} />;
+    return <Onboarding onComplete={(view) => {
+      setOnboardingComplete(true);
+      if (view) setCurrentView(view);
+    }} />;
+  }
+
+  if (!isUnlocked) {
+    return <LockScreen onUnlock={() => setIsUnlocked(true)} />;
   }
 
   const formatMem = (bytes: number) => (bytes / 1e9).toFixed(1);

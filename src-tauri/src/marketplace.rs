@@ -203,9 +203,8 @@ pub async fn deploy_stack(
         if let Some(dom) = &w.domain {
             if !dom.is_empty() {
                 let config_dir = app.path().app_data_dir().unwrap_or_default().join("proxy");
-                // For Docker network stacks, Traefik routes via the container port mapped to localhost,
-                // which is 127.0.0.1. (In Production, we would use native Traefik docker provider to route natively over Docker networks without localhost binding).
-                proxy.add_route(config_dir, &session.id, dom, "127.0.0.1", w.port).await?;
+                let auth = w.require_auth.unwrap_or(false);
+                proxy.add_route(config_dir, &session.id, dom, "127.0.0.1", w.port, auth).await?;
             }
         }
 

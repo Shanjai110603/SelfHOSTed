@@ -6,7 +6,7 @@ use tokio::fs;
 #[async_trait]
 pub trait ProxyProvider: Send + Sync {
     async fn start_proxy(&self, config_dir: PathBuf) -> Result<(), String>;
-    async fn add_route(&self, config_dir: PathBuf, workload_id: &str, domain: &str, target_ip: &str, target_port: u16) -> Result<(), String>;
+    async fn add_route(&self, config_dir: PathBuf, workload_id: &str, domain: &str, target_ip: &str, target_port: u16, require_auth: bool) -> Result<(), String>;
     async fn remove_route(&self, config_dir: PathBuf, workload_id: &str) -> Result<(), String>;
 }
 
@@ -83,13 +83,31 @@ impl ProxyProvider for TraefikProxyProvider {
         Ok(())
     }
 
-    async fn add_route(&self, config_dir: PathBuf, workload_id: &str, domain: &str, target_ip: &str, target_port: u16) -> Result<(), String> {
+    async fn add_route(&self, config_dir: PathBuf, workload_id: &str, domain: &str, target_ip: &str, target_port: u16, require_auth: bool) -> Result<(), String> {
         // We write a dynamic YAML file per workload
         let dynamic_dir = config_dir.join("dynamic");
         let route_file = dynamic_dir.join(format!("{}.yml", workload_id));
 
         // Note: For localhost testing, we use HostRegexp or strict Host matching
         let rule = format!("Host(`{}`)", domain);
+        
+        let middlewares_block = if require_auth {
+            format!(r#"      middlewares:
+        - "auth-{id}""#, id = workload_id)
+        } else {
+            "".to_string()
+        };
+
+        let auth_middleware_def = if require_auth {
+            format!(r#"  middlewares:
+    auth-{id}:
+      basicAuth:
+        users:
+          - "admin:$apr1$H6uskkkW$IgXLP6ewTrSuBkTrqE8wj/" # password is 'password'
+"#, id = workload_id)
+        } else {
+            "".to_string()
+        };
 
         let config = format!(r#"
 http:
@@ -99,17 +117,22 @@ http:
       service: "service-{id}"
       entryPoints:
         - "web"
+{middlewares_block}
 
   services:
     service-{id}:
       loadBalancer:
         servers:
           - url: "http://{ip}:{port}"
+
+{auth_middleware_def}
 "#,
             id = workload_id,
             rule = rule,
             ip = target_ip,
-            port = target_port
+            port = target_port,
+            middlewares_block = middlewares_block,
+            auth_middleware_def = auth_middleware_def
         );
 
         fs::write(route_file, config).await.map_err(|e| e.to_string())?;

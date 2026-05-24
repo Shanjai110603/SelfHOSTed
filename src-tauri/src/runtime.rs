@@ -61,6 +61,7 @@ pub struct WorkloadConfig {
     pub stack_id: Option<String>,
     pub network_alias: Option<String>,
     pub depends_on: Option<Vec<String>>,
+    pub require_auth: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -112,100 +113,95 @@ impl RuntimeProvider for DockerProvider {
     }
 
     async fn start_workload(&self, config: &WorkloadConfig) -> Result<WorkloadSession, String> {
-        let mut args = vec!["run".to_string(), "-d".to_string(), "--name".to_string(), config.id.clone()];
-        
-        // Virtual Networking for Stacks
-        if let Some(stack_id) = &config.stack_id {
-            // Ensure the network exists (this might fail harmlessly if it already exists, which is fine)
-            let _ = tokio::process::Command::new("docker")
-                .args(["network", "create", stack_id])
-                .output().await;
+        let mut cmd = std::process::Command::new("docker");
+        cmd.args(["run", "-d", "--name", &config.id]);
 
-            args.push("--network".to_string());
-            args.push(stack_id.clone());
+        // Handle isolated stack virtual networking with security zoning
+        if let Some(stack_id) = &config.stack_id {
+            // Zone topology: 
+            // "database" -> internal zone (no outbound internet)
+            // "website" -> public zone (outbound internet), plus connected to internal zone later
             
+            let is_backend = config.resource_type == "database";
+            let net_name = if is_backend { format!("{}-internal", stack_id) } else { format!("{}-public", stack_id) };
+            
+            // Try to create the network
+            let mut net_cmd = std::process::Command::new("docker");
+            net_cmd.arg("network").arg("create");
+            if is_backend {
+                net_cmd.arg("--internal"); // The critical security isolation flag
+            }
+            net_cmd.arg(&net_name);
+            let _ = net_cmd.output(); // ignore if already exists
+
+            cmd.arg("--network").arg(&net_name);
             if let Some(alias) = &config.network_alias {
-                args.push("--network-alias".to_string());
-                args.push(alias.clone());
+                cmd.arg("--network-alias").arg(alias);
             }
         } else {
             // Setup internal network proxy access if Traefik needs to hit it
             // Or we expose it randomly if no proxy. For EPIC-001, we expose the port explicitly on localhost.
-            args.push("-p".to_string());
-            args.push(format!("127.0.0.1:{}:{}", config.port, config.port));
+            cmd.arg("-p").arg(format!("127.0.0.1:{}:{}", config.port, config.port));
         }
 
         for (k, v) in &config.env_vars {
-            args.push("-e".to_string());
-            args.push(format!("{}={}", k, v));
+            cmd.arg("-e").arg(format!("{}={}", k, v));
         }
 
         // Apply Runtime Templates
         match config.template.as_str() {
             "nodejs" => {
                 if let Some(path) = &config.host_path {
-                    args.push("-v".to_string());
-                    args.push(format!("{}:/app", path));
-                    args.push("-w".to_string());
-                    args.push("/app".to_string());
+                    cmd.arg("-v").arg(format!("{}:/app", path));
+                    cmd.arg("-w").arg("/app");
                 }
-                args.push("node:18-alpine".to_string());
-                args.push("npm".to_string());
-                args.push("start".to_string());
+                cmd.args(["node:18-alpine", "npm", "start"]);
             },
             "python" => {
                 if let Some(path) = &config.host_path {
-                    args.push("-v".to_string());
-                    args.push(format!("{}:/app", path));
-                    args.push("-w".to_string());
-                    args.push("/app".to_string());
+                    cmd.arg("-v").arg(format!("{}:/app", path));
+                    cmd.arg("-w").arg("/app");
                 }
-                args.push("python:3.11-slim".to_string());
-                args.push("python".to_string());
-                args.push("-m".to_string());
-                args.push("http.server".to_string());
-                args.push(config.port.to_string());
+                cmd.args(["python:3.11-slim", "python", "-m", "http.server", &config.port.to_string()]);
             },
             "php" => {
                 if let Some(path) = &config.host_path {
-                    args.push("-v".to_string());
-                    args.push(format!("{}:/var/www/html", path));
+                    cmd.arg("-v").arg(format!("{}:/var/www/html", path));
                 }
-                args.push("php:8-apache".to_string());
+                cmd.arg("php:8-apache");
             },
             "static" => {
                 if let Some(path) = &config.host_path {
-                    args.push("-v".to_string());
-                    args.push(format!("{}:/usr/share/nginx/html:ro", path));
+                    cmd.arg("-v").arg(format!("{}:/usr/share/nginx/html:ro", path));
                 }
-                args.push("nginx:alpine".to_string());
+                cmd.arg("nginx:alpine");
             },
-            "mysql" => {
-                args.push("mysql:8".to_string());
-            },
-            "postgres" => {
-                args.push("postgres:alpine".to_string());
-            },
-            "redis" => {
-                args.push("redis:alpine".to_string());
-            },
-            "mongodb" => {
-                args.push("mongo:latest".to_string());
-            },
-            "wordpress" => {
-                args.push("wordpress:latest".to_string());
-            },
-            "nextcloud" => {
-                args.push("nextcloud:latest".to_string());
-            },
+            "mysql" => { cmd.arg("mysql:8"); },
+            "postgres" => { cmd.arg("postgres:alpine"); },
+            "redis" => { cmd.arg("redis:alpine"); },
+            "mongodb" => { cmd.arg("mongo:latest"); },
+            "wordpress" => { cmd.arg("wordpress:latest"); },
+            "nextcloud" => { cmd.arg("nextcloud:latest"); },
             _ => return Err("Unknown runtime template".to_string())
         }
 
-        let output = tokio::process::Command::new("docker")
-            .args(&args)
-            .output().await.map_err(|e| e.to_string())?;
+        let output = cmd.output().map_err(|e| format!("Failed to start docker container: {}", e))?;
+        if !output.status.success() {
+            let err = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("Docker error: {}", err));
+        }
 
-        if !output.status.success() { return Err(String::from_utf8_lossy(&output.stderr).to_string()); }
+        // Security Routing: Post-launch, connect frontends to the internal network so they can reach the database
+        if let Some(stack_id) = &config.stack_id {
+            if config.resource_type == "website" {
+                let internal_net = format!("{}-internal", stack_id);
+                // We ignore the error here because the internal network might not exist if this stack has no DB
+                let _ = std::process::Command::new("docker")
+                    .arg("network").arg("connect")
+                    .arg(&internal_net).arg(&config.id)
+                    .output();
+            }
+        }
 
         Ok(WorkloadSession { 
             id: config.id.clone(),
@@ -323,7 +319,8 @@ pub async fn start_workload(
     if let Some(domain) = &config.domain {
         if !domain.is_empty() {
             let config_dir = app.path().app_data_dir().unwrap_or_default().join("proxy");
-            proxy.add_route(config_dir, &session.id, domain, "127.0.0.1", config.port).await?;
+            let auth = config.require_auth.unwrap_or(false);
+            proxy.add_route(config_dir, &session.id, domain, "127.0.0.1", config.port, auth).await?;
         }
     }
 
