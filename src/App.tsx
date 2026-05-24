@@ -6,6 +6,7 @@ import { Rocket, Shield, Cpu, Activity, Share2 } from 'lucide-react';
 import { Onboarding } from './pages/Onboarding';
 import { WebsiteHosting } from './pages/WebsiteHosting';
 import { DatabaseHosting } from './pages/DatabaseHosting';
+import { Networking } from './pages/Networking';
 import { FileSharing } from './pages/FileSharing';
 import { DevDashboard } from './pages/DevDashboard';
 import { TelemetryWidget } from './components/TelemetryWidget';
@@ -91,6 +92,8 @@ function App() {
           <WebsiteHosting />
         ) : currentView === 'database' ? (
           <DatabaseHosting />
+        ) : currentView === 'networking' ? (
+          <Networking />
         ) : currentView === 'fileshare' ? (
           <FileSharing />
         ) : currentView === 'dev-dashboard' ? (

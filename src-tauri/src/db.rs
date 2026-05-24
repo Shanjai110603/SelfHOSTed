@@ -123,6 +123,7 @@ pub struct SessionHistoryEntry {
     pub started_at: String,
 }
 
+#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Clone)]
 pub struct PublicLinkEntry {
     pub id: String,
@@ -278,6 +279,7 @@ impl DatabaseManager {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn get_active_links(&self) -> Result<Vec<PublicLinkEntry>, String> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare("SELECT id, session_id, public_url, provider, access_mode FROM public_links").map_err(|e| e.to_string())?;

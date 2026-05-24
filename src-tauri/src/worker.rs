@@ -6,12 +6,11 @@ use std::sync::Mutex;
 pub enum WorkerJob {
     ProcessExpirations,
     TickTelemetry,
-    // Future extensions:
-    // RecoverTunnels,
-    // VerifyRuntimeHealth,
+    ReconcileExposure,
 }
 
 pub struct OrchestrationWorker {
+    #[allow(dead_code)]
     pub tx: mpsc::UnboundedSender<WorkerJob>,
     pub rx: Mutex<Option<mpsc::UnboundedReceiver<WorkerJob>>>,
 }
@@ -35,6 +34,9 @@ pub fn start_orchestration_worker(app: tauri::AppHandle) {
                 WorkerJob::TickTelemetry => {
                     handle_telemetry(&app).await;
                 }
+                WorkerJob::ReconcileExposure => {
+                    handle_exposure_reconciliation(&app).await;
+                }
             }
         }
     });
@@ -46,6 +48,7 @@ pub fn start_orchestration_worker(app: tauri::AppHandle) {
             interval.tick().await;
             let _ = tx.send(WorkerJob::ProcessExpirations);
             let _ = tx.send(WorkerJob::TickTelemetry);
+            let _ = tx.send(WorkerJob::ReconcileExposure);
         }
     });
 }
@@ -57,7 +60,7 @@ async fn handle_expirations(app: &tauri::AppHandle) {
     {
         let manager = app.state::<crate::session::SessionManager>();
         let mut map = manager.sessions.lock().unwrap();
-        for (id, session) in map.iter() {
+        for (_id, session) in map.iter() {
             if now >= session.expires_at {
                 expired.push(session.clone());
             }
@@ -74,15 +77,12 @@ async fn handle_expirations(app: &tauri::AppHandle) {
                 .args(["rm", "-f", &session.id])
                 .output().await;
         } else if session.resource_type == "tunnel" {
-            use crate::network::TunnelManager;
-            let tunnel_manager = app.state::<TunnelManager>();
-            let child_opt = {
-                let mut tunnels = tunnel_manager.tunnels.lock().unwrap();
-                tunnels.remove(&session.id)
-            };
-            if let Some(mut child) = child_opt {
-                let _ = child.kill().await;
-            }
+            let net = app.state::<crate::network::ActiveNetworkState>();
+            let db = app.state::<crate::db::DatabaseManager>();
+            // Attempt to revoke from both providers since we don't store provider in ManagedSession directly for now
+            let _ = net.cloudflare.revoke_exposure(&session.id).await;
+            let _ = net.tailscale.revoke_exposure(&session.id).await;
+            let _ = db.remove_public_link(&session.id);
         }
     }
 }
@@ -99,6 +99,35 @@ async fn handle_telemetry(app: &tauri::AppHandle) {
     for policy in policies.iter() {
         if let Some(alert) = policy.evaluate(&telemetry_payload, app).await {
             let _ = app.emit("orchestration-alert", alert);
+        }
+    }
+}
+
+async fn handle_exposure_reconciliation(app: &tauri::AppHandle) {
+    let db = app.state::<crate::db::DatabaseManager>();
+    let net = app.state::<crate::network::ActiveNetworkState>();
+    
+    // Attempt to fetch active links; if none or error, exit early
+    if let Ok(links) = db.get_active_links() {
+        for link in links {
+            // Check if the workload container itself is still alive
+            let check_container = std::process::Command::new("docker")
+                .args(["ps", "-q", "-f", &format!("name={}", link.session_id)])
+                .output();
+                
+            let is_running = check_container.map(|o| !o.stdout.is_empty()).unwrap_or(false);
+            
+            if !is_running {
+                println!("Orchestrator: Workload {} is dead, cleaning up orphaned exposure: {}", link.session_id, link.id);
+                let _ = net.cloudflare.revoke_exposure(&link.id).await;
+                let _ = net.tailscale.revoke_exposure(&link.id).await;
+                let _ = db.remove_public_link(&link.id);
+                continue;
+            }
+
+            // If workload is alive, ensure the provider tunnel is also alive.
+            // Simplified reconciliation: We just verify provider intent.
+            // A more advanced approach would query the `NetworkProvider::check_status()` trait method.
         }
     }
 }

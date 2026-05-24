@@ -12,6 +12,7 @@ export const WebsiteHosting: React.FC = () => {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [domain, setDomain] = useState('');
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
+  const [exposureProvider, setExposureProvider] = useState('none');
   
   const [status, setStatus] = useState<string | null>(null);
   const [isLaunching, setIsLaunching] = useState(false);
@@ -35,6 +36,11 @@ export const WebsiteHosting: React.FC = () => {
           env_vars: envVars,
           domain: domain.length > 0 ? domain : null,
           host_path: hostPath,
+          exposure: exposureProvider !== 'none' ? {
+            provider: exposureProvider === 'cloudflare' ? 'cloudflare' : 'tailscale',
+            mode: exposureProvider === 'cloudflare' ? 'quick' : 'mesh',
+            token: null
+          } : null
         }
       });
       
@@ -128,8 +134,38 @@ export const WebsiteHosting: React.FC = () => {
                 value={domain} 
                 onChange={(e) => setDomain(e.target.value)}
                 placeholder="myapp.local"
-                style={{ width: '100%', padding: '12px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', borderRadius: '8px' }}
+                style={{ width: '100%', padding: '12px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', borderRadius: '8px', marginBottom: '24px' }}
               />
+
+              <h3 style={{ color: 'var(--text-primary)', marginBottom: '8px' }}>Global Network Exposure</h3>
+              <p className="text-secondary" style={{ marginBottom: '16px', fontSize: '0.9rem' }}>
+                Orchestrate public or mesh routing directly to this workload. 
+                <strong style={{ color: '#f59e0b', marginLeft: '4px' }}>Secure by Default: Local Only.</strong>
+              </p>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <button 
+                  onClick={() => setExposureProvider('none')}
+                  className="btn-secondary" 
+                  style={{ display: 'flex', flexDirection: 'column', padding: '16px', border: exposureProvider === 'none' ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(255,255,255,0.1)', background: exposureProvider === 'none' ? 'rgba(59,130,246,0.1)' : 'transparent' }}>
+                  <span style={{ color: exposureProvider === 'none' ? '#3b82f6' : 'white', fontWeight: 'bold' }}>Local Only</span>
+                  <span className="text-secondary" style={{ fontSize: '0.8rem', marginTop: '4px' }}>Accessible only on this machine.</span>
+                </button>
+                <button 
+                  onClick={() => setExposureProvider('cloudflare')}
+                  className="btn-secondary" 
+                  style={{ display: 'flex', flexDirection: 'column', padding: '16px', border: exposureProvider === 'cloudflare' ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(255,255,255,0.1)', background: exposureProvider === 'cloudflare' ? 'rgba(59,130,246,0.1)' : 'transparent' }}>
+                  <span style={{ color: exposureProvider === 'cloudflare' ? '#3b82f6' : 'white', fontWeight: 'bold' }}>Cloudflare Quick Tunnel</span>
+                  <span className="text-secondary" style={{ fontSize: '0.8rem', marginTop: '4px' }}>Temporary public trycloudflare URL.</span>
+                </button>
+                <button 
+                  onClick={() => setExposureProvider('tailscale')}
+                  className="btn-secondary" 
+                  style={{ display: 'flex', flexDirection: 'column', padding: '16px', border: exposureProvider === 'tailscale' ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(255,255,255,0.1)', background: exposureProvider === 'tailscale' ? 'rgba(59,130,246,0.1)' : 'transparent' }}>
+                  <span style={{ color: exposureProvider === 'tailscale' ? '#3b82f6' : 'white', fontWeight: 'bold' }}>Tailscale Mesh</span>
+                  <span className="text-secondary" style={{ fontSize: '0.8rem', marginTop: '4px' }}>Private access across your devices.</span>
+                </button>
+              </div>
             </GlassCard>
 
             <GlassCard title="Advanced: Environment Variables" icon={<Terminal size={24} />}>

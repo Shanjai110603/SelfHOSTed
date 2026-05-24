@@ -23,7 +23,6 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(system::SystemMonitor::new())
         .manage(session::SessionManager::new())
-        .manage(network::TunnelManager::new())
         .setup(|app| {
             // 1. Initialize VaultManager (OS Keyring + Cryptography)
             // If this fails (e.g., headless linux without ENV), we fail initialization cleanly.
@@ -70,8 +69,12 @@ pub fn run() {
             ];
             app.manage(policies);
 
-            // Recover any active tunnels from previous sessions
-            network::auto_restore_tunnels(app.handle().clone());
+            // 5. Initialize Network Providers
+            let network_state = network::ActiveNetworkState {
+                cloudflare: std::sync::Arc::new(network::CloudflareProvider::new()),
+                tailscale: std::sync::Arc::new(network::TailscaleProvider::new()),
+            };
+            app.manage(network_state);
             
             // Recover any orphaned but running containers
             session::auto_recover_sessions(app.handle().clone());
@@ -89,8 +92,8 @@ pub fn run() {
             runtime::stop_workload,
             runtime::pause_session,
             runtime::resume_session,
-            network::start_tunnel,
-            network::stop_tunnel,
+            network::expose_workload,
+            network::revoke_exposure,
             session::register_session,
             session::update_session_status,
             session::get_active_sessions,
