@@ -249,6 +249,16 @@ impl DatabaseManager {
         }
         Ok(sessions)
     }
+
+    pub fn save_secret_internal(&self, id: &str, secret_type: &str, encrypted_payload: &str, metadata: Option<&str>) -> Result<(), String> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO secrets (id, secret_type, encrypted_payload, metadata) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(id) DO UPDATE SET encrypted_payload = excluded.encrypted_payload, metadata = excluded.metadata, updated_at = CURRENT_TIMESTAMP",
+            params![id, secret_type, encrypted_payload, metadata]
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
 }
 
 // Tunnel persistence internally used by network.rs

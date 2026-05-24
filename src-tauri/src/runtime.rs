@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 use std::sync::Arc;
+use std::collections::HashMap;
 use async_trait::async_trait;
+use tauri::Manager;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct CapabilityEngine {
@@ -37,29 +39,29 @@ pub struct RuntimeStatus {
     pub active_containers: usize,
 }
 
-#[derive(Serialize)]
-pub struct WebsiteSession {
+#[derive(Serialize, Deserialize, Clone)]
+pub struct WorkloadConfig {
     pub id: String,
-    pub path: String,
-    pub port: u16,
-    pub status: String,
+    pub resource_type: String, // "website", "database", "fileshare"
+    pub template: String,      // "nodejs", "python", "php", "static", "mysql", "postgres"
+    pub port: u16,             // Internal target port
+    pub env_vars: HashMap<String, String>,
+    pub domain: Option<String>,
+    pub host_path: Option<String>,
 }
 
-#[derive(Serialize)]
-pub struct DatabaseSession {
+#[derive(Serialize, Clone)]
+pub struct WorkloadSession {
     pub id: String,
-    pub port: u16,
+    pub config: WorkloadConfig,
     pub status: String,
 }
 
 #[async_trait]
 pub trait RuntimeProvider: Send + Sync {
     async fn check_runtime(&self) -> Result<RuntimeStatus, String>;
-    async fn start_website(&self, path: &str, port: u16) -> Result<WebsiteSession, String>;
-    async fn stop_website(&self, id: &str) -> Result<(), String>;
-    async fn start_fileshare(&self, path: &str, port: u16) -> Result<WebsiteSession, String>;
-    async fn start_database(&self, password: &str, port: u16) -> Result<DatabaseSession, String>;
-    async fn stop_database(&self, id: &str) -> Result<(), String>;
+    async fn start_workload(&self, config: &WorkloadConfig) -> Result<WorkloadSession, String>;
+    async fn stop_workload(&self, id: &str) -> Result<(), String>;
     async fn pause_session(&self, id: &str) -> Result<(), String>;
     async fn resume_session(&self, id: &str) -> Result<(), String>;
 }
@@ -88,59 +90,101 @@ impl RuntimeProvider for DockerProvider {
         })
     }
 
-    async fn start_website(&self, path: &str, port: u16) -> Result<WebsiteSession, String> {
-        let output = Command::new("docker")
-            .args(["run", "-d", "-p", &format!("{}:80", port), "-v", &format!("{}:/usr/share/nginx/html:ro", path), "nginx:alpine"])
-            .output().map_err(|e| e.to_string())?;
+    async fn start_workload(&self, config: &WorkloadConfig) -> Result<WorkloadSession, String> {
+        let mut args = vec!["run".to_string(), "-d".to_string(), "--name".to_string(), config.id.clone()];
+        
+        // Setup internal network proxy access if Traefik needs to hit it
+        // Or we expose it randomly if no proxy. For EPIC-001, we expose the port explicitly on localhost.
+        args.push("-p".to_string());
+        args.push(format!("127.0.0.1:{}:{}", config.port, config.port));
+
+        for (k, v) in &config.env_vars {
+            args.push("-e".to_string());
+            args.push(format!("{}={}", k, v));
+        }
+
+        // Apply Runtime Templates
+        match config.template.as_str() {
+            "nodejs" => {
+                if let Some(path) = &config.host_path {
+                    args.push("-v".to_string());
+                    args.push(format!("{}:/app", path));
+                    args.push("-w".to_string());
+                    args.push("/app".to_string());
+                }
+                args.push("node:18-alpine".to_string());
+                args.push("npm".to_string());
+                args.push("start".to_string());
+            },
+            "python" => {
+                if let Some(path) = &config.host_path {
+                    args.push("-v".to_string());
+                    args.push(format!("{}:/app", path));
+                    args.push("-w".to_string());
+                    args.push("/app".to_string());
+                }
+                args.push("python:3.11-slim".to_string());
+                args.push("python".to_string());
+                args.push("-m".to_string());
+                args.push("http.server".to_string());
+                args.push(config.port.to_string());
+            },
+            "php" => {
+                if let Some(path) = &config.host_path {
+                    args.push("-v".to_string());
+                    args.push(format!("{}:/var/www/html", path));
+                }
+                args.push("php:8-apache".to_string());
+            },
+            "static" => {
+                if let Some(path) = &config.host_path {
+                    args.push("-v".to_string());
+                    args.push(format!("{}:/usr/share/nginx/html:ro", path));
+                }
+                args.push("nginx:alpine".to_string());
+            },
+            "mysql" => {
+                args.push("mysql:8".to_string());
+            },
+            "postgres" => {
+                args.push("postgres:alpine".to_string());
+            },
+            "redis" => {
+                args.push("redis:alpine".to_string());
+            },
+            "mongodb" => {
+                args.push("mongo:latest".to_string());
+            },
+            _ => return Err("Unknown runtime template".to_string())
+        }
+
+        let output = tokio::process::Command::new("docker")
+            .args(&args)
+            .output().await.map_err(|e| e.to_string())?;
 
         if !output.status.success() { return Err(String::from_utf8_lossy(&output.stderr).to_string()); }
-        let id = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-        Ok(WebsiteSession { id, path: path.to_string(), port, status: "Running".to_string() })
+        Ok(WorkloadSession { 
+            id: config.id.clone(),
+            config: config.clone(),
+            status: "Running".to_string(),
+        })
     }
 
-    async fn stop_website(&self, id: &str) -> Result<(), String> {
-        let output = Command::new("docker").args(["rm", "-f", id]).output().map_err(|e| e.to_string())?;
-        if !output.status.success() { return Err(String::from_utf8_lossy(&output.stderr).to_string()); }
-        Ok(())
-    }
-
-    async fn start_fileshare(&self, path: &str, port: u16) -> Result<WebsiteSession, String> {
-        let output = Command::new("docker")
-            .args(["run", "-d", "-p", &format!("{}:{}", port, port), "-v", &format!("{}:/shared:ro", path), "python:3.9-slim", "python", "-m", "http.server", &port.to_string(), "--directory", "/shared"])
-            .output().map_err(|e| e.to_string())?;
-
-        if !output.status.success() { return Err(String::from_utf8_lossy(&output.stderr).to_string()); }
-        let id = String::from_utf8_lossy(&output.stdout).trim().to_string();
-
-        Ok(WebsiteSession { id, path: path.to_string(), port, status: "Running".to_string() })
-    }
-
-    async fn start_database(&self, password: &str, port: u16) -> Result<DatabaseSession, String> {
-        let output = Command::new("docker")
-            .args(["run", "-d", "-p", &format!("{}:5432", port), "-e", &format!("POSTGRES_PASSWORD={}", password), "postgres:alpine"])
-            .output().map_err(|e| e.to_string())?;
-
-        if !output.status.success() { return Err(String::from_utf8_lossy(&output.stderr).to_string()); }
-        let id = String::from_utf8_lossy(&output.stdout).trim().to_string();
-
-        Ok(DatabaseSession { id, port, status: "Running".to_string() })
-    }
-
-    async fn stop_database(&self, id: &str) -> Result<(), String> {
-        let output = Command::new("docker").args(["rm", "-f", id]).output().map_err(|e| e.to_string())?;
+    async fn stop_workload(&self, id: &str) -> Result<(), String> {
+        let output = tokio::process::Command::new("docker").args(["rm", "-f", id]).output().await.map_err(|e| e.to_string())?;
         if !output.status.success() { return Err(String::from_utf8_lossy(&output.stderr).to_string()); }
         Ok(())
     }
 
     async fn pause_session(&self, id: &str) -> Result<(), String> {
-        let output = Command::new("docker").args(["pause", id]).output().map_err(|e| e.to_string())?;
+        let output = tokio::process::Command::new("docker").args(["pause", id]).output().await.map_err(|e| e.to_string())?;
         if !output.status.success() { return Err(String::from_utf8_lossy(&output.stderr).to_string()); }
         Ok(())
     }
 
     async fn resume_session(&self, id: &str) -> Result<(), String> {
-        let output = Command::new("docker").args(["unpause", id]).output().map_err(|e| e.to_string())?;
+        let output = tokio::process::Command::new("docker").args(["unpause", id]).output().await.map_err(|e| e.to_string())?;
         if !output.status.success() { return Err(String::from_utf8_lossy(&output.stderr).to_string()); }
         Ok(())
     }
@@ -165,39 +209,20 @@ impl RuntimeProvider for NativeProvider {
         })
     }
 
-    async fn start_website(&self, path: &str, port: u16) -> Result<WebsiteSession, String> {
-        // TODO: Spawn a Warp / Tokio background thread to serve the path natively
-        // For MVP, we simulate success
-        let id = format!("native-web-{}", port);
-        Ok(WebsiteSession { id, path: path.to_string(), port, status: "Running".to_string() })
+    async fn start_workload(&self, config: &WorkloadConfig) -> Result<WorkloadSession, String> {
+        Ok(WorkloadSession { 
+            id: config.id.clone(),
+            config: config.clone(),
+            status: "Running".to_string(),
+        })
     }
 
-    async fn stop_website(&self, _id: &str) -> Result<(), String> {
-        // TODO: Stop the background thread
+    async fn stop_workload(&self, _id: &str) -> Result<(), String> {
         Ok(())
     }
 
-    async fn start_fileshare(&self, path: &str, port: u16) -> Result<WebsiteSession, String> {
-        // TODO: Spawn Warp with directory listing
-        let id = format!("native-file-{}", port);
-        Ok(WebsiteSession { id, path: path.to_string(), port, status: "Running".to_string() })
-    }
-
-    async fn start_database(&self, _password: &str, _port: u16) -> Result<DatabaseSession, String> {
-        Err("Databases are not supported on this platform capabilities tier.".into())
-    }
-
-    async fn stop_database(&self, _id: &str) -> Result<(), String> {
-        Err("Databases are not supported on this platform capabilities tier.".into())
-    }
-
-    async fn pause_session(&self, _id: &str) -> Result<(), String> {
-        Ok(()) // Native webservers pause inherently or don't consume CPU when idle
-    }
-
-    async fn resume_session(&self, _id: &str) -> Result<(), String> {
-        Ok(())
-    }
+    async fn pause_session(&self, _id: &str) -> Result<(), String> { Ok(()) }
+    async fn resume_session(&self, _id: &str) -> Result<(), String> { Ok(()) }
 }
 
 // ==========================================
@@ -210,28 +235,68 @@ pub async fn check_runtime(runtime: tauri::State<'_, ActiveRuntime>) -> Result<R
 }
 
 #[tauri::command]
-pub async fn start_website(runtime: tauri::State<'_, ActiveRuntime>, path: String, port: u16) -> Result<WebsiteSession, String> {
-    runtime.provider.start_website(&path, port).await
+pub async fn start_workload(
+    runtime: tauri::State<'_, ActiveRuntime>,
+    proxy: tauri::State<'_, Arc<dyn crate::proxy::ProxyProvider>>,
+    vault: tauri::State<'_, crate::vault::VaultManager>,
+    db: tauri::State<'_, crate::db::DatabaseManager>,
+    app: tauri::AppHandle,
+    config: WorkloadConfig
+) -> Result<WorkloadSession, String> {
+    
+    // Generate UUID if empty
+    let mut config = config.clone();
+    if config.id.is_empty() {
+        config.id = format!("workload-{}", uuid::Uuid::new_v4().to_string().chars().take(8).collect::<String>());
+    }
+
+    // Intercept databases to generate secure Vault credentials
+    if config.resource_type == "database" {
+        let raw_password = vault.generate_secure_password();
+        let encrypted = vault.encrypt_string(&raw_password)?;
+        
+        // Save encrypted password to sqlite
+        let _ = db.save_secret_internal(&format!("{}_admin_password", config.id), "database_password", &encrypted, None);
+
+        // Inject raw password into the env context for Docker to use
+        match config.template.as_str() {
+            "mysql" => { config.env_vars.insert("MYSQL_ROOT_PASSWORD".to_string(), raw_password); },
+            "postgres" => { config.env_vars.insert("POSTGRES_PASSWORD".to_string(), raw_password); },
+            "mariadb" => { config.env_vars.insert("MARIADB_ROOT_PASSWORD".to_string(), raw_password); },
+            "redis" => { config.env_vars.insert("REDIS_PASSWORD".to_string(), raw_password); },
+            "mongodb" => { 
+                config.env_vars.insert("MONGO_INITDB_ROOT_USERNAME".to_string(), "admin".to_string());
+                config.env_vars.insert("MONGO_INITDB_ROOT_PASSWORD".to_string(), raw_password); 
+            },
+            _ => {}
+        }
+    }
+
+    // Launch workload via RuntimeProvider
+    let session = runtime.provider.start_workload(&config).await?;
+
+    // If domain is provided, sync route via ProxyProvider
+    if let Some(domain) = &config.domain {
+        if !domain.is_empty() {
+            let config_dir = app.path().app_data_dir().unwrap_or_default().join("proxy");
+            proxy.add_route(config_dir, &session.id, domain, "127.0.0.1", config.port).await?;
+        }
+    }
+
+    Ok(session)
 }
 
 #[tauri::command]
-pub async fn stop_website(runtime: tauri::State<'_, ActiveRuntime>, id: String) -> Result<(), String> {
-    runtime.provider.stop_website(&id).await
-}
-
-#[tauri::command]
-pub async fn start_fileshare(runtime: tauri::State<'_, ActiveRuntime>, path: String, port: u16) -> Result<WebsiteSession, String> {
-    runtime.provider.start_fileshare(&path, port).await
-}
-
-#[tauri::command]
-pub async fn start_database(runtime: tauri::State<'_, ActiveRuntime>, password: String, port: u16) -> Result<DatabaseSession, String> {
-    runtime.provider.start_database(&password, port).await
-}
-
-#[tauri::command]
-pub async fn stop_database(runtime: tauri::State<'_, ActiveRuntime>, id: String) -> Result<(), String> {
-    runtime.provider.stop_database(&id).await
+pub async fn stop_workload(
+    runtime: tauri::State<'_, ActiveRuntime>,
+    proxy: tauri::State<'_, Arc<dyn crate::proxy::ProxyProvider>>,
+    app: tauri::AppHandle,
+    id: String
+) -> Result<(), String> {
+    runtime.provider.stop_workload(&id).await?;
+    let config_dir = app.path().app_data_dir().unwrap_or_default().join("proxy");
+    let _ = proxy.remove_route(config_dir, &id).await;
+    Ok(())
 }
 
 #[tauri::command]

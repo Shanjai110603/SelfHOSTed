@@ -7,6 +7,7 @@ mod worker;
 mod vault;
 pub mod telemetry;
 pub mod policy;
+pub mod proxy;
 
 use tauri::Manager;
 
@@ -48,6 +49,17 @@ pub fn run() {
             };
             app.manage(runtime::ActiveRuntime { provider });
 
+            // 3.5 Initialize Proxy Provider
+            let proxy_provider: std::sync::Arc<dyn proxy::ProxyProvider> = std::sync::Arc::new(proxy::TraefikProxyProvider::new());
+            app.manage(proxy_provider.clone());
+            
+            let config_dir = app.path().app_data_dir().unwrap_or_default().join("proxy");
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = proxy_provider.start_proxy(config_dir).await {
+                    eprintln!("Failed to start proxy provider: {}", e);
+                }
+            });
+
             // 4. Initialize Telemetry and Policy Engine
             let telemetry_provider: std::sync::Arc<dyn telemetry::TelemetryProvider> = std::sync::Arc::new(telemetry::SysinfoTelemetryProvider::new());
             app.manage(telemetry_provider);
@@ -73,13 +85,10 @@ pub fn run() {
             system::get_system_stats,
             runtime::get_capabilities,
             runtime::check_runtime,
-            runtime::start_website,
-            runtime::stop_website,
-            runtime::start_database,
-            runtime::stop_database,
+            runtime::start_workload,
+            runtime::stop_workload,
             runtime::pause_session,
             runtime::resume_session,
-            runtime::start_fileshare,
             network::start_tunnel,
             network::stop_tunnel,
             session::register_session,

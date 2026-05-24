@@ -1,195 +1,165 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
-import { Globe, Folder, Play, Square, Loader2, Pause } from 'lucide-react';
+import { Globe, Settings, Terminal, Play, Folder, Box } from 'lucide-react';
 import { GlassCard } from '../components/GlassCard';
 
-interface WebsiteSession {
-  id: string;
-  path: string;
-  port: number;
-  status: string;
-}
+export const WebsiteHosting: React.FC = () => {
+  const [template, setTemplate] = useState('static');
+  const [hostPath, setHostPath] = useState('');
+  const [port, setPort] = useState(8080);
+  
+  // Advanced State
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [domain, setDomain] = useState('');
+  const [envVars, setEnvVars] = useState<Record<string, string>>({});
+  
+  const [status, setStatus] = useState<string | null>(null);
+  const [isLaunching, setIsLaunching] = useState(false);
 
-export function WebsiteHosting() {
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  const [port, setPort] = useState<number>(8080);
-  const [loading, setLoading] = useState(false);
-  const [activeSites, setActiveSites] = useState<WebsiteSession[]>([]);
-
-  useEffect(() => {
-    const fetchActiveSessions = async () => {
-      try {
-        const sessions = await invoke<any[]>('get_active_sessions');
-        // Currently ManagedSession returns { id, resource_type, expires_at, status }
-        // We need to merge this with the paths/ports from the DB history, but for MVP
-        // we can just extract port from id (e.g. "website-8080") or do a dedicated IPC.
-        // As a quick sync, let's parse port/path from history or just rely on backend recovery.
-        
-        // Actually, let's just fetch recent sessions from SQLite and filter by what's active
-        const history = await invoke<any[]>('get_recent_sessions');
-        const activeIds = sessions.filter(s => s.resource_type === 'website').map(s => s.id);
-        
-        const recoveredSites = history
-          .filter(h => activeIds.includes(h.id))
-          .map(h => {
-            const activeStatus = sessions.find(s => s.id === h.id)?.status || 'running';
-            return {
-              id: h.id,
-              path: h.path || 'Unknown Path',
-              port: h.port || 8080,
-              status: activeStatus,
-            };
-          });
-          
-        setActiveSites(recoveredSites);
-      } catch (err) {
-        console.error('Failed to fetch active sessions:', err);
-      }
-    };
-    fetchActiveSessions();
-  }, []);
-
-  const handleSelectFolder = async () => {
-    try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-      });
-      if (selected) {
-        setSelectedPath(selected as string);
-      }
-    } catch (err) {
-      console.error('Failed to open dialog:', err);
+  const handleLaunch = async () => {
+    if (!hostPath && template !== 'php') {
+      setStatus('Error: Please select a project folder.');
+      return;
     }
-  };
-
-  const handleStartHosting = async () => {
-    if (!selectedPath) return;
-    setLoading(true);
+    
+    setIsLaunching(true);
+    setStatus('Provisioning workload...');
+    
     try {
-      const session = await invoke<WebsiteSession>('start_website', { path: selectedPath, port });
+      await invoke('start_workload', {
+        config: {
+          id: '',
+          resource_type: 'website',
+          template,
+          port,
+          env_vars: envVars,
+          domain: domain.length > 0 ? domain : null,
+          host_path: hostPath,
+        }
+      });
       
-      // Log to SQLite database
-      await invoke('log_session', { 
-        id: session.id, 
-        resourceType: 'website', 
-        path: selectedPath, 
-        port: port 
-      });
-
-      setActiveSites([...activeSites, { ...session, status: 'running' }]);
-      setSelectedPath(null);
-      setPort(port + 1);
-    } catch (err) {
-      console.error('Failed to start website:', err);
-      alert(`Failed to start website: ${err}`);
+      setStatus(`Success! Workload deployed.`);
+    } catch (e) {
+      setStatus(`Failed: ${e}`);
     } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleStopHosting = async (id: string) => {
-    try {
-      await invoke('stop_website', { id });
-      setActiveSites(activeSites.filter(site => site.id !== id));
-    } catch (err) {
-      console.error('Failed to stop website:', err);
-      alert(`Failed to stop website: ${err}`);
-    }
-  };
-
-  const handlePauseSession = async (id: string) => {
-    try {
-      await invoke('pause_session', { id });
-      await invoke('update_session_status', { id, status: 'paused' });
-      setActiveSites(activeSites.map(site => site.id === id ? { ...site, status: 'paused' } : site));
-    } catch (err) {
-      console.error('Failed to pause session:', err);
-      alert(`Failed to pause session: ${err}`);
-    }
-  };
-
-  const handleResumeSession = async (id: string) => {
-    try {
-      await invoke('resume_session', { id });
-      await invoke('update_session_status', { id, status: 'running' });
-      setActiveSites(activeSites.map(site => site.id === id ? { ...site, status: 'running' } : site));
-    } catch (err) {
-      console.error('Failed to resume session:', err);
-      alert(`Failed to resume session: ${err}`);
+      setIsLaunching(false);
     }
   };
 
   return (
-    <div className="animate-fade-in">
+    <div className="page-container animate-fade-in">
       <header style={{ marginBottom: '40px' }}>
-        <h1 className="title-large">Website Hosting</h1>
-        <p className="text-secondary">Host a static HTML/CSS website securely from your local folders.</p>
+        <h1 className="title-large">Deploy Website</h1>
+        <p className="text-secondary">
+          Launch a generic infrastructure workload with intelligent routing.
+        </p>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
-        <GlassCard title="New Website" icon={<Globe size={24} />}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px', maxWidth: '800px' }}>
+        
+        {/* BASIC WORKLOAD SECTION */}
+        <GlassCard title="1. Basic Configuration" icon={<Box size={24} />}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            
-            <button className="btn-primary" style={{ background: 'rgba(255,255,255,0.05)', boxShadow: 'none', display: 'flex', justifyContent: 'flex-start' }} onClick={handleSelectFolder}>
-              <Folder size={18} />
-              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                 {selectedPath ? selectedPath : 'Select Folder containing HTML files'}
-              </span>
-            </button>
+            <div>
+              <label className="text-secondary" style={{ display: 'block', marginBottom: '8px' }}>Runtime Template</label>
+              <select 
+                value={template} 
+                onChange={(e) => setTemplate(e.target.value)}
+                style={{ width: '100%', padding: '12px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', borderRadius: '8px' }}
+              >
+                <option value="static">Static HTML (NGINX)</option>
+                <option value="nodejs">Node.js (18 Alpine)</option>
+                <option value="python">Python (3.11 Slim)</option>
+                <option value="php">PHP (8 Apache)</option>
+              </select>
+            </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span className="text-secondary">Port:</span>
+            <div>
+              <label className="text-secondary" style={{ display: 'block', marginBottom: '8px' }}>Project Directory (Host Path)</label>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <input 
+                  type="text" 
+                  value={hostPath} 
+                  onChange={(e) => setHostPath(e.target.value)}
+                  placeholder="C:\Projects\MyWebsite"
+                  style={{ flex: 1, padding: '12px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', borderRadius: '8px' }}
+                />
+                <button className="btn-primary" style={{ background: 'rgba(255,255,255,0.1)' }}>
+                  <Folder size={18} /> Browse
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-secondary" style={{ display: 'block', marginBottom: '8px' }}>Internal Port</label>
               <input 
                 type="number" 
                 value={port} 
                 onChange={(e) => setPort(parseInt(e.target.value))}
-                style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '8px 12px', borderRadius: '8px', width: '100px', fontFamily: 'inherit' }}
+                style={{ width: '100%', padding: '12px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', borderRadius: '8px' }}
               />
+              <p className="text-secondary" style={{ fontSize: '0.8rem', marginTop: '6px' }}>
+                The internal port your app listens on (e.g., 3000 for Node). The proxy will route to this.
+              </p>
             </div>
-
-            <button className="btn-primary" style={{ justifyContent: 'center' }} onClick={handleStartHosting} disabled={!selectedPath || loading}>
-              {loading ? <Loader2 className="spinner" size={18} /> : <Play size={18} />}
-              Start Hosting
-            </button>
           </div>
         </GlassCard>
 
-        <GlassCard title="Active Websites" description={activeSites.length === 0 ? "No websites currently running." : undefined}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {activeSites.map(site => (
-              <div key={site.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '8px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                     <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: site.status === 'paused' ? '#f59e0b' : 'var(--success-color)', boxShadow: site.status === 'paused' ? '0 0 10px rgba(245, 158, 11, 0.5)' : '0 0 10px var(--success-glow)' }}></div>
-                     <a href={`http://localhost:${site.port}`} target="_blank" rel="noreferrer" style={{ color: 'white', textDecoration: site.status === 'paused' ? 'line-through' : 'none', fontWeight: 500, opacity: site.status === 'paused' ? 0.5 : 1 }}>
-                       localhost:{site.port} {site.status === 'paused' && '(Paused)'}
-                     </a>
-                  </div>
-                  <span className="text-secondary" style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' }}>
-                    {site.path}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  {site.status === 'paused' ? (
-                    <button className="btn-primary" style={{ background: 'rgba(34, 197, 94, 0.2)', color: '#4ade80', boxShadow: 'none', padding: '8px' }} onClick={() => handleResumeSession(site.id)} title="Resume">
-                      <Play size={16} />
-                    </button>
-                  ) : (
-                    <button className="btn-primary" style={{ background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', boxShadow: 'none', padding: '8px' }} onClick={() => handlePauseSession(site.id)} title="Pause">
-                      <Pause size={16} />
-                    </button>
-                  )}
-                  <button className="btn-primary" style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#f87171', boxShadow: 'none', padding: '8px' }} onClick={() => handleStopHosting(site.id)} title="Stop">
-                    <Square size={16} />
-                  </button>
-                </div>
+        {/* ADVANCED TOGGLE */}
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <button 
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', display: 'flex', gap: '8px', alignItems: 'center', cursor: 'pointer' }}
+          >
+            <Settings size={16} />
+            {showAdvanced ? 'Hide Advanced Settings' : 'Show Advanced Settings'}
+          </button>
+        </div>
+
+        {/* ADVANCED SECTIONS */}
+        {showAdvanced && (
+          <>
+            <GlassCard title="Advanced: Custom Domain" icon={<Globe size={24} />}>
+              <p className="text-secondary" style={{ marginBottom: '16px' }}>
+                Bind a domain (like <code>myapp.local</code>) directly to this workload. Traefik will automatically handle the routing.
+              </p>
+              <input 
+                type="text" 
+                value={domain} 
+                onChange={(e) => setDomain(e.target.value)}
+                placeholder="myapp.local"
+                style={{ width: '100%', padding: '12px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', borderRadius: '8px' }}
+              />
+            </GlassCard>
+
+            <GlassCard title="Advanced: Environment Variables" icon={<Terminal size={24} />}>
+              <p className="text-secondary" style={{ marginBottom: '16px' }}>
+                Inject secure environment variables into the runtime container.
+              </p>
+              <div style={{ padding: '24px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px dashed rgba(255,255,255,0.1)', textAlign: 'center' }}>
+                <span className="text-secondary">Key/Value pair editor coming soon...</span>
               </div>
-            ))}
-          </div>
-        </GlassCard>
+            </GlassCard>
+          </>
+        )}
+
+        {/* LAUNCH BAR */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}>
+          <span style={{ color: status?.includes('Error') ? '#ff4d4f' : 'var(--text-secondary)' }}>
+            {status}
+          </span>
+          <button 
+            className="btn-primary" 
+            onClick={handleLaunch} 
+            disabled={isLaunching}
+            style={{ opacity: isLaunching ? 0.7 : 1 }}
+          >
+            <Play size={18} />
+            {isLaunching ? 'Provisioning...' : 'Deploy Workload'}
+          </button>
+        </div>
+
       </div>
     </div>
   );
-}
+};

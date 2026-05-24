@@ -92,4 +92,18 @@ impl VaultManager {
         String::from_utf8(plaintext_bytes)
             .map_err(|_| "Decrypted data is not valid UTF-8".into())
     }
+
+    pub fn generate_secure_password(&self) -> String {
+        // Generate a 24-character cryptographically secure random password
+        const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
+                                abcdefghijklmnopqrstuvwxyz\
+                                0123456789!@#$%^&*()-_=+";
+        let mut password = String::with_capacity(24);
+        let mut rng = rand::thread_rng();
+        for _ in 0..24 {
+            let idx = (rng.next_u32() as usize) % CHARSET.len();
+            password.push(CHARSET[idx] as char);
+        }
+        password
+    }
 }
