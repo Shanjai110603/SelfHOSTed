@@ -8,6 +8,7 @@ mod vault;
 pub mod telemetry;
 pub mod policy;
 pub mod proxy;
+mod marketplace;
 
 use tauri::Manager;
 
@@ -76,6 +77,9 @@ pub fn run() {
             };
             app.manage(network_state);
             
+            // 6. Initialize Marketplace TemplateEngine
+            app.manage(std::sync::Arc::new(marketplace::TemplateEngine::new()));
+            
             // Recover any orphaned but running containers
             session::auto_recover_sessions(app.handle().clone());
 
@@ -102,7 +106,9 @@ pub fn run() {
             db::log_session,
             db::get_recent_sessions,
             db::save_secret,
-            db::get_secret
+            db::get_secret,
+            marketplace::get_marketplace_templates,
+            marketplace::deploy_stack
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

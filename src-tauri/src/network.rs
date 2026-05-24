@@ -59,7 +59,7 @@ impl NetworkProvider for CloudflareProvider {
             let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
             let mut reader = BufReader::new(stderr).lines();
 
-            let mut public_url_res = String::new();
+            let public_url_res;
             let id = format!("cf-{}", workload_id);
 
             let timeout_duration = std::time::Duration::from_secs(10);

@@ -8,6 +8,7 @@ import { WebsiteHosting } from './pages/WebsiteHosting';
 import { DatabaseHosting } from './pages/DatabaseHosting';
 import { Networking } from './pages/Networking';
 import { FileSharing } from './pages/FileSharing';
+import { Marketplace } from './pages/Marketplace';
 import { DevDashboard } from './pages/DevDashboard';
 import { TelemetryWidget } from './components/TelemetryWidget';
 import { OrchestrationToast } from './components/OrchestrationToast';
@@ -92,6 +93,8 @@ function App() {
           <WebsiteHosting />
         ) : currentView === 'database' ? (
           <DatabaseHosting />
+        ) : currentView === 'marketplace' ? (
+          <Marketplace />
         ) : currentView === 'networking' ? (
           <Networking />
         ) : currentView === 'fileshare' ? (

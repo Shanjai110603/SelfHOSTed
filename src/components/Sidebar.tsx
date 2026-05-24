@@ -1,4 +1,4 @@
-import { Home, Server, HardDrive, Settings, Activity, Database, Share2, Globe, LayoutDashboard, FolderSync, Shield } from 'lucide-react';
+import { Home, Server, HardDrive, Settings, Activity, Database, Share2, Globe, LayoutDashboard, FolderSync, Shield, Package } from 'lucide-react';
 import './Sidebar.css';
 
 interface SidebarProps {
@@ -27,6 +27,10 @@ export function Sidebar({ currentView, onNavigate }: SidebarProps) {
         <button className={`menu-item ${currentView === 'database' ? 'active' : ''}`} onClick={() => onNavigate('database')} style={{background: 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', fontSize: '1rem', width: '100%'}}>
           <Database size={20} />
           <span>Database Hosting</span>
+        </button>
+        <button className={`menu-item ${currentView === 'marketplace' ? 'active' : ''}`} onClick={() => onNavigate('marketplace')} style={{background: 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', fontSize: '1rem', width: '100%'}}>
+          <Package size={20} />
+          <span>App Marketplace</span>
         </button>
         <button className={`menu-item ${currentView === 'networking' ? 'active' : ''}`} onClick={() => onNavigate('networking')} style={{background: 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', fontSize: '1rem', width: '100%'}}>
           <Activity size={20} />

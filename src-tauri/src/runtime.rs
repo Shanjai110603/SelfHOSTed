@@ -50,11 +50,24 @@ pub struct ExposureConfig {
 pub struct WorkloadConfig {
     pub id: String,
     pub resource_type: String, // "website", "database", "fileshare"
-    pub template: String,      // "nodejs", "python", "php", "static", "mysql", "postgres"
+    pub template: String,      // "nodejs", "python", "php", "static", "mysql", "postgres", "wordpress"
     pub port: u16,             // Internal target port
     pub env_vars: HashMap<String, String>,
     pub domain: Option<String>,
     pub host_path: Option<String>,
+    pub exposure: Option<ExposureConfig>,
+    
+    // Virtual Networking / Stack fields
+    pub stack_id: Option<String>,
+    pub network_alias: Option<String>,
+    pub depends_on: Option<Vec<String>>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct StackConfig {
+    pub id: String,
+    pub name: String,
+    pub workloads: Vec<WorkloadConfig>,
     pub exposure: Option<ExposureConfig>,
 }
 
@@ -101,10 +114,26 @@ impl RuntimeProvider for DockerProvider {
     async fn start_workload(&self, config: &WorkloadConfig) -> Result<WorkloadSession, String> {
         let mut args = vec!["run".to_string(), "-d".to_string(), "--name".to_string(), config.id.clone()];
         
-        // Setup internal network proxy access if Traefik needs to hit it
-        // Or we expose it randomly if no proxy. For EPIC-001, we expose the port explicitly on localhost.
-        args.push("-p".to_string());
-        args.push(format!("127.0.0.1:{}:{}", config.port, config.port));
+        // Virtual Networking for Stacks
+        if let Some(stack_id) = &config.stack_id {
+            // Ensure the network exists (this might fail harmlessly if it already exists, which is fine)
+            let _ = tokio::process::Command::new("docker")
+                .args(["network", "create", stack_id])
+                .output().await;
+
+            args.push("--network".to_string());
+            args.push(stack_id.clone());
+            
+            if let Some(alias) = &config.network_alias {
+                args.push("--network-alias".to_string());
+                args.push(alias.clone());
+            }
+        } else {
+            // Setup internal network proxy access if Traefik needs to hit it
+            // Or we expose it randomly if no proxy. For EPIC-001, we expose the port explicitly on localhost.
+            args.push("-p".to_string());
+            args.push(format!("127.0.0.1:{}:{}", config.port, config.port));
+        }
 
         for (k, v) in &config.env_vars {
             args.push("-e".to_string());
@@ -162,6 +191,12 @@ impl RuntimeProvider for DockerProvider {
             },
             "mongodb" => {
                 args.push("mongo:latest".to_string());
+            },
+            "wordpress" => {
+                args.push("wordpress:latest".to_string());
+            },
+            "nextcloud" => {
+                args.push("nextcloud:latest".to_string());
             },
             _ => return Err("Unknown runtime template".to_string())
         }
