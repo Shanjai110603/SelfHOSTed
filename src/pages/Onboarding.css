@@ -1,0 +1,168 @@
+.onboarding-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100vw;
+  background-color: var(--bg-color);
+  background-image: 
+    radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.15), transparent 40%);
+}
+
+.onboarding-modal {
+  width: 100%;
+  max-width: 500px;
+  padding: 48px;
+  border-radius: 24px;
+  border-right: 1px solid var(--panel-border); /* reset from sidebar */
+  border: 1px solid var(--panel-border);
+  text-align: center;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 400px;
+}
+
+.onboarding-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+}
+
+.onboarding-icon-large {
+  width: 80px;
+  height: 80px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(99, 102, 241, 0.05));
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-color);
+  margin-bottom: 24px;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+.onboarding-desc {
+  margin-top: 16px;
+  margin-bottom: 32px;
+  font-size: 1.1rem;
+}
+
+.onboarding-btn {
+  margin-top: auto;
+  padding: 14px 32px;
+  font-size: 1.1rem;
+}
+
+.step-indicators {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 32px;
+}
+
+.step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
+}
+
+.step-dot.active {
+  background: var(--accent-color);
+  width: 24px;
+  border-radius: 4px;
+}
+
+/* Dependencies Step */
+.status-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  margin-top: 24px;
+  color: var(--text-secondary);
+}
+
+.status-box.success {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--success-color);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+  color: var(--accent-color);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.dependency-explanation {
+  margin-top: 24px;
+  width: 100%;
+}
+
+.text-left {
+  text-align: left;
+}
+
+.dep-card {
+  margin-top: 16px;
+  padding: 20px;
+}
+
+.dep-card h4 {
+  margin: 0 0 8px 0;
+  color: var(--text-primary);
+}
+
+.text-sm {
+  font-size: 0.9rem;
+}
+
+.mt-4 { margin-top: 16px; }
+.mt-6 { margin-top: 24px; }
+.w-full { width: 100%; }
+.justify-center { justify-content: center; }
+
+/* Hardware Step */
+.capabilities-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--text-secondary);
+}
+
+.capabilities-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.text-success {
+  color: var(--success-color);
+}
+
+.bg-accent-alpha {
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+}
+
+.rounded {
+  border-radius: 8px;
+}
+
+.p-3 {
+  padding: 12px;
+}
